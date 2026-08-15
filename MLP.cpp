@@ -1,0 +1,44 @@
+#include <vector>
+#include "Layer.cpp"
+class MLP {
+private:
+    std::vector<Layer> layers;
+
+public:
+    // Constructor: Recibe una lista con los tamaños de todas las capas
+   MLP(const std::vector<size_t>& sizes, std::mt19937& gen) {
+        layers.reserve(sizes.size() - 1);
+        for (size_t i = 0; i < sizes.size() - 1; ++i) {
+            layers.emplace_back(sizes[i], sizes[i+1], gen);
+        }
+    }
+    std::vector<ValuePtr> parameters() {
+        std::vector<ValuePtr> params;
+        for (auto& layer : layers) {
+            auto layer_params = layer.parameters();
+            // Concatenamos los parámetros de la capa a la lista global
+            params.insert(params.end(), layer_params.begin(), layer_params.end());
+        }
+        return params;
+    }
+
+    // ==========================================
+    // TU ÚLTIMA MISIÓN ARQUITECTÓNICA
+    // ==========================================
+    std::vector<ValuePtr> operator()(const std::vector<ValuePtr>& x) {
+        
+        // TODO: Implementar el Forward Pass secuencial
+        // 1. Tienes los datos originales 'x'.
+        // 2. Debes pasárselos a la primera capa, coger el resultado, 
+        //    pasárselo a la segunda capa, coger el resultado...
+        // 3. Devuelve el vector resultante de la última capa.
+
+        // ¡Tu código aquí!
+	std::vector<ValuePtr> aux = x;
+	for (auto& layer_i: layers){
+	  
+	  aux = layer_i(aux);
+}
+	return aux;
+    }
+};
