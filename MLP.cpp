@@ -1,5 +1,8 @@
 #include <vector>
 #include "Layer.cpp"
+#include <fstream>
+#include <stdexcept>
+#include <string>
 class MLP {
 private:
     std::vector<Layer> layers;
@@ -20,6 +23,26 @@ public:
             params.insert(params.end(), layer_params.begin(), layer_params.end());
         }
         return params;
+    }
+
+    void save(const std::string& filename) {
+        std::ofstream out(filename, std::ios::binary);
+        if (!out) throw std::runtime_error("No se pudo crear el archivo.");
+        
+        auto params = parameters();
+        for (auto& p : params) {
+            out.write(reinterpret_cast<const char*>(&p->data), sizeof(float));
+        }
+    }
+
+    void load(const std::string& filename) {
+        std::ifstream in(filename, std::ios::binary);
+        if (!in) throw std::runtime_error("No se encontró el archivo.");
+
+        auto params = parameters();
+        for (auto& p : params) {
+            in.read(reinterpret_cast<char*>(&p->data), sizeof(float));
+        }
     }
 
     // ==========================================
