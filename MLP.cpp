@@ -3,13 +3,13 @@
 class MLP {
 private:
     std::vector<Layer> layers;
-
+    
 public:
     // Constructor: Recibe una lista con los tamaños de todas las capas
    MLP(const std::vector<size_t>& sizes, std::mt19937& gen) {
         layers.reserve(sizes.size() - 1);
         for (size_t i = 0; i < sizes.size() - 1; ++i) {
-            layers.emplace_back(sizes[i], sizes[i+1], gen);
+            layers.emplace_back(sizes[i], sizes[i+1], gen, i == sizes.size() - 2); 
         }
     }
     std::vector<ValuePtr> parameters() {
@@ -35,10 +35,11 @@ public:
 
         // ¡Tu código aquí!
 	std::vector<ValuePtr> aux = x;
-	for (auto& layer_i: layers){
-	  
-	  aux = layer_i(aux);
+	bool is_linear;
+	for(size_t i=0; i<layers.size(); i++){
+	  aux = layers[i](aux);
 }
 	return aux;
     }
+
 };

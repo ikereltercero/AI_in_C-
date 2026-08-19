@@ -9,12 +9,12 @@ class Neuron {
 private:
     std::vector<ValuePtr> w; // Lista de pesos (uno por cada entrada)
     ValuePtr b;              // Un solo bias
-     
+    bool is_linear;
 
 
 public:
     // Constructor: Recibe cuántas entradas (nin) va a tener esta neurona
-     Neuron(size_t nin, std::mt19937& gen) {
+     Neuron(size_t nin, std::mt19937& gen, bool is_linear) : is_linear(is_linear) {
         // Inicializador de números aleatorios entre -1.0 y 1.0
         std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
 
@@ -54,7 +54,7 @@ public:
         for (size_t i = 0; i < w.size(); ++i){
             sum = sum + w[i]*x[i];
         }
-        return relu(sum);
+        return (is_linear ? sum : relu(sum));
 
 
     }
