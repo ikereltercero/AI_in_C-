@@ -5,7 +5,7 @@ project(MotorIA_TFG)
 # 1. Políticas y Estándar de C++
 # ==========================================
 set(CMAKE_POLICY_DEFAULT_CMP0135 NEW)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ==========================================

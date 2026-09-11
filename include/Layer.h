@@ -1,15 +1,23 @@
 #pragma once
-#include <vector>
+#include "Tensor.h"
 #include <random>
-#include "Neuron.h"
+#include <vector>
 
 class Layer {
-private:
-    std::vector<Neuron> neuronas;
+public:
+    Tensor W; // Matriz de pesos [entradas, salidas]
+    Tensor b; // Matriz de sesgos [1, salidas]
     bool is_linear;
 
-public:
+    // Cachés de memoria para el Backward Pass
+    Tensor X_cache;   
+    Tensor out_cache; 
+
     Layer(size_t nin, size_t nout, std::mt19937& gen, bool is_linear);
-    std::vector<ValuePtr> operator()(const std::vector<ValuePtr>& inputs);
-    std::vector<ValuePtr> parameters();
+
+    // Forward pasará un batch entero de golpe
+    Tensor forward(const Tensor& X);
+
+    // Backward recibe el gradiente de la capa siguiente y devuelve el suyo
+    Tensor backward(const Tensor& dOut);
 };

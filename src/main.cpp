@@ -1,128 +1,118 @@
 #include <iostream>
 #include <random>
-#include "autograd.h"
-#include "Neuron.h"
-#include "Layer.h"
-#include "MLP.h"
 #include <omp.h>
-#include "Adam.h"
-#include "DataLoader.h"
+#include <cstdio>
+#include "../include/DataLoader.h"
+#include "../include/MLP.h"
+#include "../include/Adam.h"
+#include "../include/Loss.h"
 
-struct DatoXOR {
-    std::vector<float> x;
-    float target;
-};
-
-int argmax(const std::vector<ValuePtr>& predicciones) {
-    int mejor_indice = 0;
-    float max_val = predicciones[0]->data;
+template<LossFunction LossType>
+void entrenar_modelo_con_evaluacion(MLP& modelo, DataLoader& loader, Adam& optimizador, int num_epochs, size_t batch_size) {
     
-    for (size_t i = 1; i < predicciones.size(); ++i) {
-        if (predicciones[i]->data > max_val) {
-            max_val = predicciones[i]->data;
-            mejor_indice = static_cast<int>(i);
+    for (int epoch = 1; epoch <= num_epochs; ++epoch) {
+        loader.shuffleTrain();
+        loader.resetTrain();
+        float loss_epoca = 0.0f;
+
+        while (true) {
+            BatchView batch = loader.next_train_batch(batch_size);
+            if (batch.samples == 0) break;
+
+            optimizador.zero_grad();
+
+            Tensor pred = modelo.forward(batch);
+            float batch_loss = LossType::forward(pred, batch.Y_ptr, batch.num_outputs);
+            Tensor dLoss = LossType::backward(pred, batch.Y_ptr, batch.num_outputs);
+            
+            loss_epoca += batch_loss;
+
+            modelo.backward(dLoss);
+            optimizador.step();
+        }
+
+        // Evaluación periódica en Test (para ver si realmente acierta las flores)
+        if (epoch % 100 == 0) {
+            loader.resetTest();
+            size_t aciertos = 0;
+            size_t total = 0;
+
+            while (true) {
+                BatchView test_batch = loader.next_test_batch(batch_size);
+                if (test_batch.samples == 0) break;
+
+                Tensor pred_test = modelo.forward(test_batch);
+
+                for (size_t i = 0; i < pred_test.rows; ++i) {
+                    // Argmax de la predicción de la IA
+                    int idx_pred = 0;
+                    float max_val = pred_test.at(i, 0);
+                    for (size_t j = 1; j < pred_test.cols; ++j) {
+                        if (pred_test.at(i, j) > max_val) {
+                            max_val = pred_test.at(i, j);
+                            idx_pred = static_cast<int>(j);
+                        }
+                    }
+
+                    // Argmax del valor real (One-Hot)
+                    int idx_real = 0;
+                    float max_real = test_batch.Y_ptr[i * test_batch.num_outputs + 0];
+                    for (size_t j = 1; j < test_batch.num_outputs; ++j) {
+                        float val = test_batch.Y_ptr[i * test_batch.num_outputs + j];
+                        if (val > max_real) {
+                            max_real = val;
+                            idx_real = static_cast<int>(j);
+                        }
+                    }
+
+                    if (idx_pred == idx_real) aciertos++;
+                    total++;
+                }
+            }
+
+            float acc = (static_cast<float>(aciertos) / total) * 100.0f;
+            std::printf("Epoch %4d | CrossEntropy Loss: %.4f | Test Accuracy: %zu/%zu (%.2f%%)\n", 
+                        epoch, loss_epoca, aciertos, total, acc);
         }
     }
-    return mejor_indice;
 }
 
-int argmax_vector(const std::vector<float>& vec) {
-    int mejor_indice = 0;
-    float max_val = vec[0];
-    for (size_t i = 1; i < vec.size(); ++i) {
-        if (vec[i] > max_val) {
-            max_val = vec[i];
-            mejor_indice = static_cast<int>(i);
-        }
-    }
-    return mejor_indice;
-}
 
 int main() {
-    std::cout << "=== ENTRENANDO LA IA ===\n\n";
+    std::cout << "=== ENTRENANDO MOTOR V2 (TENSORS & MATRICES) ===\n\n";
 
-    DataLoader loader;
-    if (!loader.cargarCSV("../dataset.csv", 4)) {
+    DataLoader loader(42);
+    // Asumimos 4 entradas y 3 salidas según tu dataset de Iris (One-Hot Encoding)
+    if (!loader.cargarCSV("../dataset.csv", 4, 3)) {
         std::cerr << "Abortando ejecución. Falló el DataLoader.\n";
         return -1;
     }
-    const auto& dataset = loader.obtenerDatos();
 
-    std::mt19937 gen(1); 
-    MLP modelo({4, 8, 8, 3}, gen); 
+    loader.split_train_test(0.8f);
 
+    std::cout << "Muestras de Train: " << loader.tamanoTrain() << '\n';
+    std::cout << "Muestras de Test: " << loader.tamanoTest() << "\n\n";
 
-    std::vector<ValuePtr> parametros = modelo.parameters();
-    std::cout << "Total de parametros a optimizar: " << parametros.size() << "\n\n";
+    std::mt19937 gen(1);
+    MLP modelo({4, 8, 8, 3}, gen);
 
+    float learning_rate = 0.0005f;
+    Adam optimizador(modelo.parameters(), learning_rate);
 
-    float learning_rate = 0.001f; 
-    Adam optimizador(parametros, learning_rate);
-    std::cout << "=== INICIANDO ENTRENAMIENTO PARALELO CON OPENMP ===\n";
-    
-    // Opcional: Puedes forzar el número de hilos por código si lo deseas
-    // omp_set_num_threads(4); 
-
+    std::cout << "=== INICIANDO ENTRENAMIENTO MOTOR V2 ===\n";
     double t_inicio = omp_get_wtime();
 
-    for (int epoch = 1; epoch <= 1000; ++epoch) {
-        float loss_acumulada = 0.0f;
-        int aciertos = 0;
-        int total_muestras = 0;
-
-        for (const auto& muestra : dataset) { 
-
-            std::vector<ValuePtr> x; 
-            std::vector<ValuePtr> target;
-            for (int i =0; i < muestra.x.size(); i++){  
-                x.push_back(make_value(muestra.x.at(i)));
-            }
-            for (int i =0; i < muestra.y.size(); i++){  
-                target.push_back(make_value(muestra.y.at(i)));
-            }        
-            // A) FORWARD PASS
-            std::vector<ValuePtr> pred = modelo(x);
-            int index_pred = argmax(pred);
-            int index = argmax_vector(muestra.y);
-            if (index_pred == index) {
-                aciertos++;
-            }
-            total_muestras++;
-
-            // B) PÉRDIDA (MSE)
-            ValuePtr loss(make_value(0.0f));
-            for(int i = 0; i < pred.size(); i++){
-                 ValuePtr diff = pred[i] - target[i];
-                loss = loss + (diff * diff);
-            }
-           
-
-            // C) ZERO GRAD
-            optimizador.zero_grad();    
-
-            // D) BACKWARD PASS
-            backward(loss);
-
-            // E) OPTIMIZADOR ADAM
-            optimizador.step();
-
-            loss_acumulada += loss->data;
-        }
-
-        if (epoch % 100 == 0) {
-            float precision = (static_cast<float>(aciertos) / total_muestras) * 100.0f;
-            std::cout << "Epoch " << epoch 
-                      << " | Loss: " << loss_acumulada 
-                      << " | Aciertos: " << aciertos << "/" << total_muestras 
-                      << " (" << precision << "%)\n";
-        }
-    }
+    // Entrenamos inyectando el tipo de Loss que queramos:
+    entrenar_modelo_con_evaluacion<CrossEntropy>(modelo, loader, optimizador, 1000, 16);
+    
+    // Si quisieras usar MSE, simplemente harías:
+    // entrenar_modelo<MSE>(modelo, loader, optimizador, 1000, 16);
 
     double t_fin = omp_get_wtime();
-    double tiempo_total = t_fin - t_inicio;
+    std::printf("\nTiempo total de ejecución: %.6f segundos.\n", t_fin - t_inicio);
     
-    std::cout << "\n¡Entrenamiento finalizado!\n";
-    printf("Tiempo total de ejecución: %.6f segundos.\n", tiempo_total);
+    // Serialización segura
+    modelo.save("../modelo_v2_iris.bin");
 
     return 0;
 }

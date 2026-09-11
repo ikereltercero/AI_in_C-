@@ -1,26 +1,23 @@
 #pragma once
-#include "autograd.h"
 #include <vector>
-#include <unordered_map>
+#include "Tensor.h"
 
 class Adam {
 private:
-    struct Momentos {
-        float m = 0.0f;
-        float v = 0.0f;
-    };
-
-    std::vector<ValuePtr> parametros;
-    std::unordered_map<Value*, Momentos> estado; // Diccionario de memorias por cada peso
+    std::vector<Tensor*> parametros;
+    
+    // En lugar de un diccionario, guardamos arreglos planos del mismo tamaño que los tensores
+    std::vector<std::vector<float>> m;
+    std::vector<std::vector<float>> v;
     
     float lr;
     float beta1;
     float beta2;
     float epsilon;
-    int t; // Paso de tiempo actual
+    std::size_t t; // Paso de tiempo actual
 
 public:
-    Adam(const std::vector<ValuePtr>& params, float learning_rate = 0.01f);
+    Adam(const std::vector<Tensor*>& params, float learning_rate = 0.001f);
     void step();
     void zero_grad();
 };
