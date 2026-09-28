@@ -4,10 +4,10 @@
 #include <stdexcept>
 #include <type_traits>
 #include <string>
+#include "ml/MLP.h"
 
-constexpr char MLP_MAGIC[5] = "MLP1";
-constexpr uint32_t MLP_VERSION = 1;
-
+const std::string MLP_MAGIC = "MODL"; 
+const int MLP_VERSION = 2;
 // 1. Concept para tipos planos
 template<typename T>
 concept POD = std::is_trivially_copyable_v<T>;

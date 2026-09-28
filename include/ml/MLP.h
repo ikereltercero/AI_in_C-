@@ -22,4 +22,6 @@ public:
 
     void save(const std::string& filename);
     void load(const std::string& filename);
+
+    Tensor inference(const BatchView& batch) const;
 };

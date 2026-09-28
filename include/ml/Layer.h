@@ -20,4 +20,6 @@ public:
 
     // Backward recibe el gradiente de la capa siguiente y devuelve el suyo
     Tensor backward(const Tensor& dOut);
+
+    Tensor forward_inference(const Tensor& X) const;
 };
