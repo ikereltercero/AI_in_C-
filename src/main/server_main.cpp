@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstring>
 #include <atomic>
+#include <stdexcept>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -15,7 +16,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
-#include <sys/eventfd.h> // Vital para notificaciones ultrarrápidas entre hilos
+#include <sys/eventfd.h>
 
 #include <nlohmann/json.hpp>
 
@@ -28,7 +29,7 @@
 #include "utils/Config.h"
 #include "net/ThreadPool.h"
 #include "utils/Logger.h"
-#include "hardware/sensor_hal.h" // Driver C de bajo nivel
+#include "hardware/sensor_hal.h"
 
 using json = nlohmann::json;
 
@@ -40,19 +41,14 @@ volatile std::sig_atomic_t detener_servidor = 0;
 
 int server_fd = -1;
 int epoll_fd = -1;
-int shutdown_fd = -1; // Descriptor de archivo de eventos para apagado limpio
+int shutdown_fd = -1;
 
 constexpr int MAX_EVENTS = 64;
 
-
-#include <unordered_map>
-#include <sstream>
-#include <stdexcept>
-
-// Analizador de parámetros GET (acepta std::string_view de forma nativa)
+// Analizador de parámetros GET (std::string_view)
 std::unordered_map<std::string, std::string> parse_query_string(std::string_view query) {
     std::unordered_map<std::string, std::string> params;
-    std::string query_str(query); // Convertimos el view a string para el stringstream
+    std::string query_str(query);
     std::stringstream ss(query_str);
     std::string item;
     while (std::getline(ss, item, '&')) {
@@ -66,12 +62,11 @@ std::unordered_map<std::string, std::string> parse_query_string(std::string_view
     return params;
 }
 
-// Validador y conversor seguro de string a float
 bool parse_float(const std::string& str, float& out_val) {
     try {
         size_t idx = 0;
         out_val = std::stof(str, &idx);
-        return idx == str.size(); // Comprueba que toda la cadena era un número válido
+        return idx == str.size();
     } catch (...) {
         return false;
     }
@@ -85,14 +80,13 @@ void handle_sigint(int) {
     detener_servidor = 1;
     uint64_t u = 1;
     if (shutdown_fd != -1) {
-        // Escribir en eventfd despierta a epoll_wait inmediatamente (-1 timeout)
         ssize_t bytes_written = write(shutdown_fd, &u, sizeof(uint64_t));
         (void)bytes_written;
     }
 }
 
 // ============================================================
-// CONFIGURAR UN SOCKET COMO NO BLOQUEANTE
+// CONFIGURAR SOCKET NO BLOQUEANTE
 // ============================================================
 
 int set_nonblocking(int sock) {
@@ -107,7 +101,7 @@ int set_nonblocking(int sock) {
 }
 
 // ============================================================
-// ENVIO COMPLETO DE DATOS
+// ENVÍO COMPLETO DE DATOS
 // ============================================================
 
 bool send_all(int sock, const std::string& data) {
@@ -137,7 +131,7 @@ bool send_all(int sock, const std::string& data) {
 }
 
 // ============================================================
-// LECTURA NO BLOQUEANTE DE PETICIONES HTTP
+// LECTURA NO BLOQUEANTE HTTP
 // ============================================================
 
 std::string leer_peticion_nonblocking(int client_socket) {
@@ -149,8 +143,6 @@ std::string leer_peticion_nonblocking(int client_socket) {
 
         if (bytes > 0) {
             peticion_completa.append(buffer, bytes);
-            
-            // Salir si detectamos el final de la cabecera HTTP (\r\n\r\n)
             if (peticion_completa.find("\r\n\r\n") != std::string::npos) {
                 break;
             }
@@ -172,7 +164,7 @@ std::string leer_peticion_nonblocking(int client_socket) {
 }
 
 // ============================================================
-// PROCESAR UNA PETICION CLIENTE EN EL THREADPOOL
+// PROCESAR CLIENTE
 // ============================================================
 
 void procesar_cliente(int client_socket, Router& router) {
@@ -217,7 +209,6 @@ void procesar_cliente(int client_socket, Router& router) {
 // ============================================================
 
 int main() {
-    // 1. Configurar SIGINT.
     struct sigaction sa {};
     sa.sa_handler = handle_sigint;
     sigemptyset(&sa.sa_mask);
@@ -236,7 +227,6 @@ int main() {
         "Iniciando servidor IA con epoll y eventfd."
     );
 
-    // 2. Cargar modelo de IA.
     std::mt19937 gen(1);
     MLP modelo({4, 8, 8, 3}, gen);
 
@@ -248,17 +238,16 @@ int main() {
         return 1;
     }
 
-    // Inicializar el Driver HAL (C puro)
     if (hal_init() != HAL_OK) {
         Logger::log(Logger::Level::LOG_ERROR, "Fallo al inicializar el hardware del sensor HAL.");
         return 1;
     }
 
-    // 3. Configurar router (¡Instanciado antes de añadir rutas!)
     Router router;
 
     // Ruta 1: Home (GET /)
     router.add_route("GET", "/", [](const HttpRequest&, HttpResponse& res) {
+        Logger::log(Logger::Level::LOG_INFO, "Procesando GET / (Home)");
         res.status_code = 200;
         res.status_message = "OK";
         res.headers["Content-Type"] = "text/html; charset=utf-8";
@@ -268,13 +257,14 @@ int main() {
 
     // Ruta 2: Healthcheck (GET /health)
     router.add_route("GET", "/health", [](const HttpRequest&, HttpResponse& res) {
+        Logger::log(Logger::Level::LOG_INFO, "Procesando GET /health (Healthcheck)");
         res.status_code = 200;
         res.status_message = "OK";
         res.headers["Content-Type"] = "application/json";
         res.body = "{\"status\": \"healthy\", \"engine\": \"C++20 Matrix Core\"}";
     });
 
-    // Ruta 3: Inferencia por Query Parameters (GET /predict)
+    // Ruta 3: Inferencia GET (/predict)
     router.add_route("GET", "/predict", [&modelo](const HttpRequest& req, HttpResponse& res) {
         Logger::log(Logger::Level::LOG_INFO, "Procesando GET /predict (Query mode)");        
         auto params = parse_query_string(req.query);
@@ -332,7 +322,7 @@ int main() {
         }
     });
 
-    // Ruta 4: Inferencia IA por JSON (POST /api/v1/predict)
+    // Ruta 4: Inferencia POST JSON (/api/v1/predict)
     router.add_route("POST", "/api/v1/predict", [&modelo](const HttpRequest& req, HttpResponse& res) {
         Logger::log(Logger::Level::LOG_INFO, "Procesando POST /api/v1/predict (JSON mode)");    
 
@@ -382,16 +372,15 @@ int main() {
 
     // Ruta 5: Lectura de Hardware por Driver C + Inferencia (GET /api/v1/sensor)
     router.add_route("GET", "/api/v1/sensor", [&modelo](const HttpRequest&, HttpResponse& res) {
+        Logger::log(Logger::Level::LOG_INFO, "Procesando GET /api/v1/sensor (HAL C Driver mode)");
         sensor_data_t sample;
         
-        // 1. Lectura a bajo nivel mediante la capa C (HAL)
         if (hal_read_sample(&sample) != HAL_OK) {
             res.status_code = 500;
             res.body = "{\"error\": \"Fallo de lectura de hardware HAL\"}";
             return;
         }
 
-        // 2. Pasamos los primeros 4 floats de la muestra bruta al modelo de IA (Iris dataset usa 4 features)
         std::vector<float> input_data = {sample.data[0], sample.data[1], sample.data[2], sample.data[3]};
         BatchView batch = {input_data.data(), nullptr, 1, 4, 3};
         Tensor pred = modelo.inference(batch);
@@ -414,14 +403,12 @@ int main() {
                    "  \"confidence\": " + std::to_string(max_prob) + "\n}";
     });
 
-    // 4. Crear socket TCP principal.
     server_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (server_fd == -1) {
         std::cerr << "[FATAL] socket(): " << std::strerror(errno) << "\n";
         return 1;
     }
 
-    // 5. Reutilizar puerto.
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
         std::cerr << "[FATAL] setsockopt(): " << std::strerror(errno) << "\n";
@@ -429,14 +416,12 @@ int main() {
         return 1;
     }
 
-    // 6. Activar modo no bloqueante en el socket de escucha.
     if (set_nonblocking(server_fd) == -1) {
         std::cerr << "[FATAL] set_nonblocking(): " << std::strerror(errno) << "\n";
         close(server_fd);
         return 1;
     }
 
-    // 7. Bind y Listen.
     sockaddr_in address {};
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -455,7 +440,6 @@ int main() {
         return 1;
     }
 
-    // 8. Crear epoll.
     epoll_fd = epoll_create1(EPOLL_CLOEXEC);
     if (epoll_fd == -1) {
         std::cerr << "[FATAL] epoll_create1(): " << std::strerror(errno) << "\n";
@@ -463,7 +447,6 @@ int main() {
         return 1;
     }
 
-    // 9. Registrar el socket de escucha en epoll.
     epoll_event ev_server {};
     ev_server.events = EPOLLIN;
     ev_server.data.fd = server_fd;
@@ -474,7 +457,6 @@ int main() {
         return 1;
     }
 
-    // 10. Crear e integrar eventfd para apagado limpio (Cero polling desaprovechado)
     shutdown_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (shutdown_fd == -1) {
         std::cerr << "[FATAL] eventfd(): " << std::strerror(errno) << "\n";
@@ -494,18 +476,15 @@ int main() {
         return 1;
     }
 
-    // 11. Crear ThreadPool.
     const std::size_t workers = Config::get_workers();
     ThreadPool pool(workers, 100);
 
     std::cout << "[INFO] Servidor escuchando en http://localhost:" << puerto 
               << " con " << workers << " hilos de procesamiento.\n";
 
-    // 12. Bucle principal de eventos.
     std::vector<epoll_event> events(MAX_EVENTS);
 
     while (!detener_servidor) {
-        // Timeout a -1: El núcleo duerme el hilo exactamente hasta que ocurre un evento real (0% CPU)
         int nfds = epoll_wait(epoll_fd, events.data(), MAX_EVENTS, -1);
 
         if (nfds == -1) {
@@ -519,13 +498,11 @@ int main() {
         for (int i = 0; i < nfds; ++i) {
             int current_fd = events[i].data.fd;
 
-            // CASO A: Señal de apagado recibida por eventfd
             if (current_fd == shutdown_fd) {
                 detener_servidor = 1;
                 break;
             }
 
-            // CASO B: Petición entrante en el socket de escucha principal
             if (current_fd == server_fd) {
                 while (!detener_servidor) {
                     sockaddr_in client_addr {};
@@ -548,13 +525,11 @@ int main() {
                         break;
                     }
 
-                    // Configurar socket cliente como no bloqueante
                     if (set_nonblocking(client_socket) == -1) {
                         close(client_socket);
                         continue;
                     }
 
-                    // Encolar cliente en el ThreadPool
                     bool accepted = false;
                     try {
                         accepted = pool.enqueue(
@@ -566,7 +541,6 @@ int main() {
                         std::cerr << "[ERROR] Error en ThreadPool: " << e.what() << "\n";
                     }
 
-                    // Si la cola está saturada, responder con HTTP 503
                     if (!accepted) {
                         const std::string overload =
                             "HTTP/1.1 503 Service Unavailable\r\n"
@@ -583,10 +557,9 @@ int main() {
         }
     }
 
-    // 13. Apagado ordenado de recursos
     Logger::log(Logger::Level::LOG_INFO, "Apagando servidor y liberando descriptores...");
 
-    hal_close(); // Cerrar driver de hardware C
+    hal_close();
 
     if (shutdown_fd != -1) {
         close(shutdown_fd);

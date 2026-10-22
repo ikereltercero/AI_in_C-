@@ -1,6 +1,7 @@
 #ifndef SENSOR_HAL_H
 #define SENSOR_HAL_H
 
+
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>

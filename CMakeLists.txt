@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.14)
-
 project(MotorIA_TFG)
 
 # ==========================================
@@ -13,29 +12,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 # ==========================================
-# 2. OpenMP
+# 2. OpenMP y Threads
 # ==========================================
 find_package(OpenMP REQUIRED)
+find_package(Threads REQUIRED)
 
 # ==========================================
-# 3. Dependencias externas
+# 3. Dependencias externas (FetchContent)
 # ==========================================
 include(FetchContent)
 
-# ------------------------------------------
-# nlohmann/json
-# ------------------------------------------
 FetchContent_Declare(
     nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# ------------------------------------------
-# GoogleTest
-# ------------------------------------------
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
@@ -45,12 +40,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 # ==========================================
-# 4. Inclusión de headers
-# ==========================================
-include_directories(include .)
-
-# ==========================================
-# 5. Librería CORE (Motor ML)
+# 4. Librería CORE (Motor ML)
 # ==========================================
 set(MOTOR_SOURCES
     src/autograd.cpp
@@ -60,8 +50,13 @@ set(MOTOR_SOURCES
     src/ml/DataLoader.cpp
 )
 
-add_library(ia_core STATIC
-    ${MOTOR_SOURCES}
+add_library(ia_core STATIC ${MOTOR_SOURCES})
+
+target_include_directories(ia_core 
+    PUBLIC 
+        include
+    PRIVATE 
+        .
 )
 
 target_link_libraries(ia_core
@@ -70,57 +65,59 @@ target_link_libraries(ia_core
 )
 
 # ==========================================
-# 6. Ejecutable principal: Entrenamiento
+# 5. Ejecutables principales (Entrenamiento y Servidor)
 # ==========================================
 add_executable(ia_motor
     src/main/main.cpp
     src/hardware/sensor_hal.c
 )
+target_link_libraries(ia_motor PRIVATE ia_core OpenMP::OpenMP_CXX Threads::Threads)
 
-target_link_libraries(ia_motor
-    PRIVATE
-        ia_core
-        OpenMP::OpenMP_CXX
-)
-
-# ==========================================
-# 7. Servidor TCP/epoll de inferencia + HAL
-# ==========================================
 add_executable(ai_server
-    src/main/server_main.cpp          # Tu código epoll + eventfd definitivo
-    src/hardware/sensor_hal.c  # Driver C puro integrado
+    src/main/server_main.cpp
+    src/hardware/sensor_hal.c
 )
-
 target_link_libraries(ai_server
     PRIVATE
         ia_core
         OpenMP::OpenMP_CXX
         nlohmann_json::nlohmann_json
-        pthread                # Requerido por el ThreadPool y hilos del sistema
+        Threads::Threads
 )
 
-# Optimización de flags de compilación para rendimiento extremo (-O3)
 if(MSVC)
     target_compile_options(ai_server PRIVATE /O2 /W4)
 else()
     target_compile_options(ai_server PRIVATE -O3 -Wall -Wextra)
 endif()
 
-
 # ==========================================
-# 8. Testing
+# 6. Testing Modulado por Proceso (CTest)
 # ==========================================
 enable_testing()
-
-add_executable(ia_tests
-    tests/test_tensor.cpp
-)
-
-target_link_libraries(ia_tests
-    PRIVATE
-        ia_core
-        GTest::gtest_main
-)
-
 include(GoogleTest)
-gtest_discover_tests(ia_tests)
+
+set(TEST_MODULES
+    test_tensor
+    test_adam
+    test_mlp
+    test_sensor
+)
+
+foreach(test_name ${TEST_MODULES})
+    add_executable(${test_name} 
+        tests/${test_name}.cpp
+        src/hardware/sensor_hal.c
+    )
+
+    target_link_libraries(${test_name}
+        PRIVATE
+            ia_core
+            GTest::gtest_main
+            Threads::Threads
+    )
+
+    gtest_discover_tests(${test_name})
+    include(GoogleTest)
+endforeach()
+

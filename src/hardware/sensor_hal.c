@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 199309L
 #include "hardware/sensor_hal.h" // Busca directamente en las carpetas -I de include/
 #include <time.h>
 #include <stdlib.h>
