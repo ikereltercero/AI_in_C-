@@ -5,6 +5,8 @@
 #include <type_traits>
 #include <string>
 #include "ml/MLP.h"
+#include <cstdint>
+
 
 const std::string MLP_MAGIC = "MODL"; 
 const int MLP_VERSION = 2;

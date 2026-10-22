@@ -2,13 +2,16 @@
 #include <vector>
 #include <stdexcept>
 #include <cstddef>
+#include <algorithm>
+
 
 class Tensor {
 public:
-    std::vector<float> data;
-    std::vector<float> grad; 
     size_t rows;
     size_t cols;
+    std::vector<float> data;
+    std::vector<float> grad; 
+    
 
     Tensor() : rows(0), cols(0) {}
     Tensor(size_t r, size_t c) : rows(r), cols(c), data(r * c, 0.0f), grad(r * c, 0.0f) {}

@@ -2,6 +2,8 @@
 #include "Tensor.h"
 #include <cmath>
 #include <algorithm>
+#include <concepts>
+
 
 // 1. Definimos el Concept: Toda función de Loss debe tener un forward y un backward con esta firma exacta.
 template<typename T>

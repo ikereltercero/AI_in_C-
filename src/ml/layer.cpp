@@ -101,7 +101,7 @@ Tensor Layer::forward_inference(const Tensor& X) const {
     // NO HAY X_cache = X; (No guardamos estado, es solo lectura)
     Tensor out(X.rows, W.cols);
 
-    #pragma omp parallel for
+    //#pragma omp parallel for
     for (int i = 0; i < (int)X.rows; ++i) {
         for (int j = 0; j < (int)W.cols; ++j) {
             float sum = 0.0f;

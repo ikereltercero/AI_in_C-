@@ -2,6 +2,8 @@
 #include <vector>
 #include <string>
 #include <random>
+#include <string_view>
+
 
 // El BatchView no copia datos, solo apunta a la memoria plana del DataLoader
 struct BatchView {

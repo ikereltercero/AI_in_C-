@@ -51,12 +51,16 @@ public:
     // Método para meter clientes en la cola (Usaremos lambdas de C++20)
     template<class F>
     bool enqueue(F&& f) {
-        {
+        { 
             std::lock_guard<std::mutex> lock(queue_mutex);
             // Pool detenido: no aceptamos nuevas tareas.
-            if (stop && tasks.size() >= max_queue_size ) {
-                return false;
-            }
+            if (stop) {
+            throw std::runtime_error("enqueue on stopped ThreadPool");
+        }
+        // Aquí limitamos de verdad la cola. Si hay más tareas de las permitidas, rechazamos.
+        if (tasks.size() >= max_queue_size) {
+            return false; 
+        }
             tasks.emplace(std::forward<F>(f));
         }
         condition.notify_one(); // Despierta a 1 hilo dormido

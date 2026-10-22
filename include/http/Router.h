@@ -20,8 +20,8 @@ private:
     // Estructura clave-valor para asociar "METODO + RUTA" (ej: "GET /predict") a una función lambda o puntero
     std::unordered_map<std::string, std::function<void(const HttpRequest&, HttpResponse&)>> routes;
 
-    std::string make_key(const std::string& method, const std::string& path) const {
-        return method + " " + path;
+    std::string make_key(std::string_view method, std::string_view path) const {
+        return std::string(method) + " " + std::string(path);
     }
 
 public:
@@ -47,7 +47,7 @@ public:
             res.status_code = 404;
             res.status_message = "Not Found";
             res.headers["Content-Type"] = "text/plain; charset=utf-8";
-            res.body = "ERROR 404: La ruta '" + req.path + "' no existe en este servidor.\n";
+            res.body = "ERROR 404: La ruta '" + std::string(req.path) + "' no existe en este servidor.\n";
         }
     }
 };
